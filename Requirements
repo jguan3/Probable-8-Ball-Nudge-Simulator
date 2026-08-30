@@ -1,0 +1,8 @@
+# Minimum versions — after your first successful `pip install -r requirements.txt`,
+# run `pip freeze | grep -iE "qiskit|numpy|matplotlib" >> requirements.txt` (and remove
+# these min-bound lines) to lock the exact versions that worked for you.
+qiskit[visualization]>=2.0
+qiskit-ibm-runtime>=0.30
+qiskit-aer>=0.15
+numpy>=1.26,<3
+matplotlib>=3.8
