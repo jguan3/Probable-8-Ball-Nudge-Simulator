@@ -1,0 +1,137 @@
+!pip install 'qiskit[visualization]' qiskit-ibm-runtime qiskit-aer
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+from qiskit import QuantumCircuit
+from qiskit.visualization import plot_histogram
+from qiskit_aer import AerSimulator
+from qiskit_ibm_runtime import SamplerV2 as Sampler, QiskitRuntimeService
+
+def nudge(high=2000):
+  values = high + 1
+  qubits = (high).bit_length()
+  significant = qubits - 1
+  sim1 = AerSimulator()
+
+  while True:
+    qc1 = QuantumCircuit(qubits, qubits)
+    others = [q for q in range(qubits) if q != significant]
+    qc1.h(others)
+    bias = np.pi / 8
+    qc1.ry(bias, significant)
+    qc1.measure(range(qubits), range(qubits))
+    result1 = sim1.run(qc1, shots=1).result()
+    bits1 = list(result1.get_counts().keys())[0]
+    raw_int = int(bits1, 2)
+
+    if raw_int < values:
+      qc2 = QuantumCircuit(1, 1)
+      qc2.h(0)
+      qc2.measure(0, 0)
+      sim2 = AerSimulator()
+      result2 = sim2.run(qc2, shots=1).result()
+      counts1 = result2.get_counts()
+      bit2 = list(counts1.keys())[0]
+
+      if bit2 == '1':
+        return raw_int / 1000
+      else:
+        return raw_int / -1000
+
+def simulate(trials=10):
+  origin = (0, 0)
+  fig, ax = plt.subplots(figsize=(8, 8))
+  total_target_angle = 0
+  total_cue_angle = 0
+
+  for i in range(trials):
+    target_angle = math.asin(nudge() / 2)
+    if target_angle > 0:
+      cue_angle = (math.pi / 2) - target_angle
+    elif target_angle < 0:
+      cue_angle = (math.pi / 2) + target_angle
+    elif target_angle == 0:
+      cue_angle = 0
+
+    target_v = 2 * math.cos(target_angle)
+    cue_v = 2 * math.cos(cue_angle)
+
+    #assume cue and target are 0.17 kg, coefficient of friction is 0.125, velocity is 2 m/s, and deceleration of gravity is 10 m/s^2
+    g = 10
+    m = 0.17
+    friction_coefficient = 0.125
+    normal_force = g * m
+    friction_force = friction_coefficient * normal_force
+    a = friction_force / m
+    target_distance = (target_v ** 2) / (a * 2)
+    cue_distance = (cue_v ** 2) / (a * 2)
+
+    target_x = target_distance * math.sin(target_angle)
+    target_y = target_distance * math.cos(target_angle)
+
+    if target_angle > 0:
+      cue_x = -cue_distance * math.sin(cue_angle)
+      cue_y = cue_distance * math.cos(cue_angle)
+    elif target_angle < 0:
+      cue_x = cue_distance * math.sin(cue_angle)
+      cue_y = cue_distance * math.cos(cue_angle)
+    elif target_angle == 0:
+      cue_x = 0
+      cue_y = 0
+
+    total_target_angle = total_target_angle + math.degrees(target_angle)
+    average_target_angle = total_target_angle / trials
+    total_cue_angle = total_cue_angle + math.degrees(cue_angle)
+    average_cue_angle = total_cue_angle / trials
+
+    ax.plot([0, target_x], [0, target_y], 'r:', alpha=0.5)
+    target_circle = plt.Circle((target_x, target_y), 0.03, color='red', alpha=0.7)
+    ax.add_patch(target_circle)
+    cue_circle = plt.Circle((cue_x, cue_y), 0.03, color='blue', alpha=0.7)
+    ax.add_patch(cue_circle)
+
+  ax.plot([], [], 'r:', alpha=0.5, label='Target ball path')
+  ax.plot([], [], 'o', color='red', alpha=0.5, label='Target ball')
+  ax.plot([], [], 'o', color='blue', alpha=0.5, label='Cue ball')
+  ax.plot([], [], 'o', color='black', alpha=0.5, label='Origin')
+  ax.plot(target_x, target_y, 'r.', markersize=1)
+  origin_circle = plt.Circle((0, 0), 0.03, color='black', alpha=1)
+  ax.add_patch(origin_circle)
+  ax.set_xlabel('x (m)')
+  ax.set_ylabel('y (m)')
+  ax.set_title(f'Average Target Angle: {average_target_angle:.1f}°, Average Cue Angle: {average_cue_angle:.1f}°')
+  ax.legend()
+  ax.axis('equal')
+  ax.set_xlim(-2, 2)
+  ax.set_ylim(-2, 2)
+  ax.grid(True, alpha=0.3)
+
+  plt.show()
+
+def plot_nudge_distribution(n_samples=1000, bin_width=0.1):
+    """Collects n_samples of nudge() output and shows their distribution
+    with plot_histogram — a validation figure that the measured shape
+    matches the intended ry(bias) skew."""
+    samples = [nudge() for _ in range(n_samples)]
+
+    binned = [round(round(s / bin_width) * bin_width, 2) for s in samples]
+    counts = {}
+    for b in binned:
+        counts[b] = counts.get(b, 0) + 1
+
+    ordered_values = sorted(counts.keys())
+    ordered_counts = {f"{i:03d}": counts[v] for i, v in enumerate(ordered_values)}
+
+    fig = plot_histogram(
+        ordered_counts, sort='asc', bar_labels=True,
+        title=f"nudge() Output Distribution ({n_samples} Samples, bin={bin_width})",
+        figsize=(12, 5),
+    )
+    ax = fig.axes[0]
+    ax.set_xticklabels([f"{v:.1f}" for v in ordered_values], rotation=90)
+    ax.set_xlabel("nudge() output")
+    ax.set_ylabel("count")
+    return fig
+
+simulate()
+plot_nudge_distribution()
